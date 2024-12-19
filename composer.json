@@ -1,0 +1,27 @@
+{
+  "name": "yuandian/container",
+  "description": "PHP Container.",
+  "type": "library",
+  "keywords": [
+    "php",
+    "container",
+    "CI"
+  ],
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "yuandian",
+      "email": "467490186@qq.com"
+    }
+  ],
+  "require": {
+    "php": ">=8.1",
+    "psr/container": "^2.0",
+    "swow/swow": "^1.5"
+  },
+  "autoload": {
+    "psr-4": {
+      "yuandian\\Container\\": "src"
+    }
+  }
+}
