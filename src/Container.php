@@ -170,7 +170,7 @@ class Container implements ContainerInterface
         }
 
         // 判断数组类型 数字数组时按顺序绑定参数
-        $type = array_is_list($vars) ? 1 : 0;
+        $isList = array_is_list($vars);
         $params = $reflect->getParameters();
         $args = [];
 
@@ -178,19 +178,32 @@ class Container implements ContainerInterface
             $name = $param->getName();
             $reflectionType = $param->getType();
 
+            // 可变参数处理
             if ($param->isVariadic()) {
                 return array_merge($args, array_values($vars));
-            } elseif ($reflectionType instanceof ReflectionNamedType && $reflectionType->isBuiltin() === false) {
-                $args[] = $this->getObjectParam($reflectionType->getName(), $vars, $param);
-            } elseif (1 == $type && !empty($vars)) {
-                $args[] = array_shift($vars);
-            } elseif (0 == $type && array_key_exists($name, $vars)) {
-                $args[] = $vars[$name];
-            } elseif ($param->isDefaultValueAvailable()) {
-                $args[] = $param->getDefaultValue();
-            } else {
-                throw new InvalidArgumentException('method param miss:' . $name);
             }
+
+            // 非标量类型参数（类/对象）
+            if ($reflectionType instanceof ReflectionNamedType && $reflectionType->isBuiltin() === false) {
+                $args[] = $this->getObjectParam($reflectionType->getName(), $vars, $param);
+            }
+
+            // 按位置绑定
+            if ($isList && !empty($vars)) {
+                $args[] = array_shift($vars);
+                continue;
+            }
+            // 按名称绑定
+            if (!$isList && array_key_exists($name, $vars)) {
+                $args[] = $vars[$name];
+                continue;
+            }
+            // 默认值处理
+            if ($param->isDefaultValueAvailable()) {
+                $args[] = $param->getDefaultValue();
+                continue;
+            }
+            throw new InvalidArgumentException('method param miss:' . $name);
         }
 
         return $args;
@@ -214,7 +227,7 @@ class Container implements ContainerInterface
             $result = $value;
             array_shift($vars);
         } else {
-            $result = $param->isDefaultValueAvailable() ? $param->getDefaultValue() : $this->make($className);
+            $result = $param->isDefaultValueAvailable() ? $param->getDefaultValue() : $this->get($className);
         }
 
         return $result;
