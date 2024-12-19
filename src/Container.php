@@ -186,6 +186,7 @@ class Container implements ContainerInterface
             // 非标量类型参数（类/对象）
             if ($reflectionType instanceof ReflectionNamedType && $reflectionType->isBuiltin() === false) {
                 $args[] = $this->getObjectParam($reflectionType->getName(), $vars, $param);
+                continue;
             }
 
             // 按位置绑定
