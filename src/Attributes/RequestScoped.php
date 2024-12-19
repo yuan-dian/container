@@ -19,7 +19,7 @@ use Attribute;
  * 请求生命周期类注解
  */
 #[Attribute(Attribute::TARGET_CLASS)]
-class RequestScoped
+final class RequestScoped
 {
 
 }

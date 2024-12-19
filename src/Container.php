@@ -21,6 +21,7 @@ use ReflectionException;
 use ReflectionFunctionAbstract;
 use ReflectionNamedType;
 use ReflectionParameter;
+use yuandian\Container\Attributes\Inject;
 use yuandian\Container\Attributes\RequestScoped;
 use yuandian\Container\Exception\ClassNotFoundException;
 
@@ -75,43 +76,43 @@ class Container implements ContainerInterface
     /**
      * 创建类的实例 已经存在则直接获取
      * @template T
-     * @param string|class-string<T> $id 类名或者标识
+     * @param string|class-string<T> $className 类名或者标识
      * @param array $vars 变量
      * @param bool $newInstance 是否每次创建新的实例
      * @return T|object
      * @throws ClassNotFoundException|ReflectionException|InvalidArgumentException
      */
-    public function make(string $id, array $vars = [], bool $newInstance = false): ?object
+    public function make(string $className, array $vars = [], bool $newInstance = false): ?object
     {
         if ($newInstance) {
-            return $this->invokeClass($id, $vars);
+            return $this->invokeClass($className, $vars);
         }
         // 1. 检查全局容器是否存在实例
-        $globalInstance = $this->lifecycleManager->getGlobal($id);
+        $globalInstance = $this->lifecycleManager->getGlobal($className);
         if ($globalInstance !== null) {
             return $globalInstance;
         }
 
         // 2. 判断生命周期类型（缓存判断结果）
-        $isRequestScope = $this->lifecycleManager->getCachedLifecycle($id);
+        $isRequestScope = $this->lifecycleManager->getCachedLifecycle($className);
         if ($isRequestScope === null) {
-            $isRequestScope = $this->isRequestScope($id);
-            $this->lifecycleManager->cacheLifecycle($id, $isRequestScope);
+            $isRequestScope = $this->isRequestScope($className);
+            $this->lifecycleManager->cacheLifecycle($className, $isRequestScope);
         }
 
         // 3. 如果是请求级别并处于请求协程中，使用请求容器
         if ($isRequestScope && $this->lifecycleManager->isRequestCoroutine()) {
-            $requestInstance = $this->lifecycleManager->getRequest($id);
+            $requestInstance = $this->lifecycleManager->getRequest($className);
             if ($requestInstance === null) {
-                $requestInstance = $this->invokeClass($id, $vars); // 自动创建
-                $this->lifecycleManager->setRequest($id, $requestInstance);
+                $requestInstance = $this->invokeClass($className, $vars); // 自动创建
+                $this->lifecycleManager->setRequest($className, $requestInstance);
             }
             return $requestInstance;
         }
 
         // 4. 否则，创建并存储在全局容器
-        $instance = $this->invokeClass($id, $vars);
-        $this->lifecycleManager->setGlobal($id, $instance);
+        $instance = $this->invokeClass($className, $vars);
+        $this->lifecycleManager->setGlobal($className, $instance);
         return $instance;
     }
 
@@ -126,24 +127,32 @@ class Container implements ContainerInterface
     public function invokeClass(string $class, array $vars = []): ?object
     {
         try {
-            $reflect = new ReflectionClass($class);
+            $classReflector = new ReflectionClass($class);
         } catch (ReflectionException $e) {
             throw new ClassNotFoundException('class not exists: ' . $class, $e);
         }
 
-        if ($reflect->hasMethod('__make')) {
-            $method = $reflect->getMethod('__make');
+        if ($classReflector->hasMethod('__make')) {
+            $method = $classReflector->getMethod('__make');
             if ($method->isPublic() && $method->isStatic()) {
                 $args = $this->bindParams($method, $vars);
                 return $method->invokeArgs(null, $args);
             }
         }
 
-        $constructor = $reflect->getConstructor();
+        $constructor = $classReflector->getConstructor();
 
-        $args = $constructor ? $this->bindParams($constructor, $vars) : [];
+        $instance = $constructor === null
+            ? $classReflector->newInstanceWithoutConstructor()
+            : $classReflector->newInstanceArgs($this->bindParams($constructor, $vars));
 
-        return $reflect->newInstanceArgs($args);
+        // 自动注入
+        foreach ($classReflector->getProperties() as $property) {
+            if (!$property->isInitialized($instance) && $property->getAttributes(Inject::class) !== []) {
+                $property->setValue($instance, $this->get($property->getType()->getName()));
+            }
+        }
+        return $instance;
     }
 
     /**
@@ -231,18 +240,18 @@ class Container implements ContainerInterface
 
     /**
      * 判断类是否为短生命周期
-     * @param string $id
+     * @param string $className
      * @return bool
      * @throws ClassNotFoundException
      * @date 2024/12/18 14:07
      * @author 原点 467490186@qq.com
      */
-    private function isRequestScope(string $id): bool
+    private function isRequestScope(string $className): bool
     {
         try {
-            $reflection = new ReflectionClass($id);
+            $reflection = new ReflectionClass($className);
         } catch (ReflectionException $e) {
-            throw new ClassNotFoundException('class not exists: ' . $id, $e);
+            throw new ClassNotFoundException('class not exists: ' . $className, $e);
         }
 
         $attributes = $reflection->getAttributes(RequestScoped::class);

@@ -19,7 +19,7 @@ use Attribute;
  * 全局生命周期类注解
  */
 #[Attribute(Attribute::TARGET_CLASS)]
-class SingletonScoped
+final class SingletonScoped
 {
 
 }
