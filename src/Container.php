@@ -33,6 +33,12 @@ class Container implements ContainerInterface
     private LifecycleManager $lifecycleManager;
 
     /**
+     * 缓存已反射的类，以避免重复创建
+     * @var array
+     */
+    private static array $reflectionCache = [];
+
+    /**
      * 容器对象实例
      * @var Container|Closure
      */
@@ -71,6 +77,28 @@ class Container implements ContainerInterface
     public static function setInstance($instance): void
     {
         static::$instance = $instance;
+    }
+
+    /**
+     * 获取对象的反射信息
+     *
+     * @param string|object $object
+     * @return ReflectionClass
+     * @date 2024/12/20 09:48
+     * @author 原点 467490186@qq.com
+     */
+    private function getReflectionClass(string|object $object): ReflectionClass
+    {
+        $className = is_object($object) ? get_class($object) : $object;
+
+        if (!isset(self::$reflectionCache[$className])) {
+            try {
+                self::$reflectionCache[$className] = new ReflectionClass($className);
+            } catch (ReflectionException $e) {
+                throw new ClassNotFoundException('class not exists: ' . $className, $e);
+            }
+        }
+        return self::$reflectionCache[$className];
     }
 
     /**
@@ -126,11 +154,7 @@ class Container implements ContainerInterface
      */
     public function invokeClass(string $class, array $vars = []): ?object
     {
-        try {
-            $classReflector = new ReflectionClass($class);
-        } catch (ReflectionException $e) {
-            throw new ClassNotFoundException('class not exists: ' . $class, $e);
-        }
+        $classReflector = $this->getReflectionClass($class);
 
         if ($classReflector->hasMethod('__make')) {
             $method = $classReflector->getMethod('__make');
@@ -262,13 +286,9 @@ class Container implements ContainerInterface
      */
     private function isRequestScope(string $className): bool
     {
-        try {
-            $reflection = new ReflectionClass($className);
-        } catch (ReflectionException $e) {
-            throw new ClassNotFoundException('class not exists: ' . $className, $e);
-        }
+        $classReflector = $this->getReflectionClass($className);
 
-        $attributes = $reflection->getAttributes(RequestScoped::class);
+        $attributes = $classReflector->getAttributes(RequestScoped::class);
         if (!empty($attributes)) {
             return true;
         }
