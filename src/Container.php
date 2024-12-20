@@ -36,7 +36,7 @@ class Container implements ContainerInterface
      * 缓存已反射的类，以避免重复创建
      * @var array
      */
-    private static array $reflectionCache = [];
+    private array $reflectionCache = [];
 
     /**
      * 容器对象实例
@@ -91,14 +91,14 @@ class Container implements ContainerInterface
     {
         $className = is_object($object) ? get_class($object) : $object;
 
-        if (!isset(self::$reflectionCache[$className])) {
+        if (!isset($this->reflectionCache[$className])) {
             try {
-                self::$reflectionCache[$className] = new ReflectionClass($className);
+                $this->reflectionCache[$className] = new ReflectionClass($className);
             } catch (ReflectionException $e) {
                 throw new ClassNotFoundException('class not exists: ' . $className, $e);
             }
         }
-        return self::$reflectionCache[$className];
+        return $this->reflectionCache[$className];
     }
 
     /**
@@ -141,6 +141,8 @@ class Container implements ContainerInterface
         // 4. 否则，创建并存储在全局容器
         $instance = $this->invokeClass($className, $vars);
         $this->lifecycleManager->setGlobal($className, $instance);
+        // 删除全局对象反射缓存，后续不需要重新创建对象
+        unset($this->reflectionCache[$className]);
         return $instance;
     }
 
