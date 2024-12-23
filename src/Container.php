@@ -213,11 +213,10 @@ class Container implements ContainerInterface
      * @template T
      * @param string|class-string<T> $className 类名或者标识
      * @param array $vars 变量
-     * @param bool $newInstance 是否每次创建新的实例
      * @return T|object
      * @throws ClassNotFoundException|ReflectionException|InvalidArgumentException
      */
-    public function make(string $className, array $vars = [], bool $newInstance = false): ?object
+    public function make(string $className, array $vars = []): ?object
     {
         $className = $this->getAlias($className);
 
@@ -415,15 +414,7 @@ class Container implements ContainerInterface
      */
     public function get(string $id): ?object
     {
-        $className = $this->getAlias($id);
-
-        if ($this->lifecycleManager->getGlobal($className) !== null) {
-            return $this->lifecycleManager->getGlobal($className);
-        }
-        if ($this->lifecycleManager->getRequest($className) !== null) {
-            return $this->lifecycleManager->getRequest($className);
-        }
-        throw new ClassNotFoundException('class not exists: ' . $id);
+        return $this->make($id);
     }
 
     /**
