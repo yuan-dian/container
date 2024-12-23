@@ -24,6 +24,7 @@ use ReflectionNamedType;
 use ReflectionParameter;
 use yuandian\Container\Attributes\Inject;
 use yuandian\Container\Attributes\RequestScoped;
+use yuandian\Container\Attributes\SingletonScoped;
 use yuandian\Container\Exception\ClassNotFoundException;
 use yuandian\Container\Exception\FuncNotFoundException;
 
@@ -33,6 +34,11 @@ use yuandian\Container\Exception\FuncNotFoundException;
 class Container implements ContainerInterface
 {
     private LifecycleManager $lifecycleManager;
+
+    public function getLifecycleManager(): LifecycleManager
+    {
+        return $this->lifecycleManager;
+    }
 
     /**
      * 缓存已反射的类，以避免重复创建
@@ -227,7 +233,6 @@ class Container implements ContainerInterface
             $isRequestScope = $this->isRequestScope($className);
             $this->lifecycleManager->cacheLifecycle($className, $isRequestScope);
         }
-
         // 3. 如果是请求级别并处于请求协程中，使用请求容器
         if ($isRequestScope && $this->lifecycleManager->isRequestCoroutine()) {
             $requestInstance = $this->lifecycleManager->getRequest($className);
@@ -411,6 +416,7 @@ class Container implements ContainerInterface
     public function get(string $id): ?object
     {
         $className = $this->getAlias($id);
+
         if ($this->lifecycleManager->getGlobal($className) !== null) {
             return $this->lifecycleManager->getGlobal($className);
         }
@@ -438,6 +444,10 @@ class Container implements ContainerInterface
         $attributes = $classReflector->getAttributes(RequestScoped::class);
         if (!empty($attributes)) {
             return true;
+        }
+        $attributes = $classReflector->getAttributes(SingletonScoped::class);
+        if (!empty($attributes)) {
+            return false;
         }
         // 隐式推断：未标记情况下，若为请求协程，默认为请求级别
         return $this->lifecycleManager->isRequestCoroutine();

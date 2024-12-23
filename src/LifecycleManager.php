@@ -13,6 +13,9 @@ declare (strict_types=1);
 
 namespace yuandian\Container;
 
+use yuandian\Container\Coroutine\ContextInterface;
+use yuandian\Container\Coroutine\ContextManager;
+
 /**
  * 生命周期管理
  */
@@ -20,6 +23,13 @@ class LifecycleManager
 {
     private array $globalInstances = [];
     private array $cache = []; // 缓存生命周期判断结果
+
+    private ContextInterface $context;
+
+    public function __construct()
+    {
+        $this->context = (new ContextManager())->getContext();
+    }
 
     /**
      * 获取全局实例
@@ -42,7 +52,7 @@ class LifecycleManager
      */
     public function getRequest(string $id)
     {
-        $context = Context::getContext();
+        $context = $this->context::getContext();
         return $context[$id] ?? null;
     }
 
@@ -51,7 +61,7 @@ class LifecycleManager
      */
     public function setRequest(string $id, $instance): void
     {
-        $context = Context::getContext();
+        $context = $this->context::getContext();
         $context[$id] = $instance;
     }
 
@@ -60,7 +70,7 @@ class LifecycleManager
      */
     public function isRequestCoroutine(): bool
     {
-        $context = Context::getContext();
+        $context = $this->context::getContext();
         return $context['is_request_coroutine'] ?? false;
     }
 
@@ -69,7 +79,7 @@ class LifecycleManager
      */
     public function markRequestCoroutine(): void
     {
-        $context = Context::getContext();
+        $context = $this->context::getContext();
         $context['is_request_coroutine'] = true;
     }
 

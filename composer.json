@@ -17,11 +17,13 @@
   "require": {
     "php": ">=8.1",
     "psr/container": "^2.0",
-    "swow/swow": "^1.5"
+    "swow/swow": "^1.5",
+    "swoole/ide-helper": "^5.0.0"
   },
   "autoload": {
     "psr-4": {
-      "yuandian\\Container\\": "src"
+      "yuandian\\Container\\": "src",
+      "yuandian\\Container\\test\\": "test"
     }
   }
 }
