@@ -16,9 +16,9 @@ namespace yuandian\Container\Attributes;
 use Attribute;
 
 /**
- * 全局生命周期类注解
+ * 全局生命周期类注解 -- 单例
  */
-#[Attribute(Attribute::TARGET_CLASS)]
+#[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]
 final class SingletonScoped
 {
 

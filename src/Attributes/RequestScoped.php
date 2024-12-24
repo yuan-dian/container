@@ -16,9 +16,9 @@ namespace yuandian\Container\Attributes;
 use Attribute;
 
 /**
- * 请求生命周期类注解
+ * 短生命周期类注解 -- 请求级别生命周期
  */
-#[Attribute(Attribute::TARGET_CLASS)]
+#[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]
 final class RequestScoped
 {
 

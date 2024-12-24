@@ -15,11 +15,37 @@ use Closure;
 
 interface ContextInterface
 {
+    /**
+     * 设置上下文
+     * @param string $id
+     * @param mixed $value
+     * @param $coroutineId
+     * @return mixed
+     * @date 2024/12/24 09:29
+     * @author 原点 467490186@qq.com
+     */
     public static function set(string $id, mixed $value, $coroutineId = null): mixed;
 
 
+    /**
+     * 获取上下文
+     * @param string $id
+     * @param mixed|null $default
+     * @param $coroutineId
+     * @return mixed
+     * @date 2024/12/24 09:29
+     * @author 原点 467490186@qq.com
+     */
     public static function get(string $id, mixed $default = null, $coroutineId = null): mixed;
 
+    /**
+     * 判断上下文是否存在
+     * @param string $id
+     * @param $coroutineId
+     * @return bool
+     * @date 2024/12/24 09:29
+     * @author 原点 467490186@qq.com
+     */
     public static function has(string $id, $coroutineId = null): bool;
 
     /**
@@ -43,10 +69,28 @@ interface ContextInterface
      */
     public static function getOrSet(string $id, mixed $value, $coroutineId = null): mixed;
 
+    /**
+     * @param $coroutineId
+     * @return mixed
+     * @date 2024/12/24 09:30
+     * @author 原点 467490186@qq.com
+     */
     public static function getContext($coroutineId = null);
 
-
+    /**
+     * @return mixed
+     * @date 2024/12/24 09:29
+     * @author 原点 467490186@qq.com
+     */
     public static function getCurrent();
 
-    public static function run(callable $callable, mixed ...$data);
+    /**
+     * 创建协程并继承父上下文
+     * @param callable $callable
+     * @param mixed ...$data
+     * @return mixed
+     * @date 2024/12/24 09:28
+     * @author 原点 467490186@qq.com
+     */
+    public static function run(callable $callable, mixed ...$data): mixed;
 }

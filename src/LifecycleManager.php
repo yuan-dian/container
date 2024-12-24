@@ -98,4 +98,17 @@ class LifecycleManager
     {
         return $this->cache[$id] ?? null;
     }
+
+    /**
+     * 创建协程并继承父上下文
+     * @param callable $callable
+     * @param mixed ...$data
+     * @return mixed
+     * @date 2024/12/24 09:28
+     * @author 原点 467490186@qq.com
+     */
+    public function run(callable $callable, mixed ...$data)
+    {
+        return $this->context::run($callable, $data);
+    }
 }

@@ -19,9 +19,7 @@ use Psr\Container\ContainerInterface;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionFunction;
-use ReflectionFunctionAbstract;
-use ReflectionNamedType;
-use ReflectionParameter;
+use ReflectionMethod;
 use yuandian\Container\Attributes\Inject;
 use yuandian\Container\Attributes\RequestScoped;
 use yuandian\Container\Attributes\SingletonScoped;
@@ -34,11 +32,7 @@ use yuandian\Container\Exception\FuncNotFoundException;
 class Container implements ContainerInterface
 {
     private LifecycleManager $lifecycleManager;
-
-    public function getLifecycleManager(): LifecycleManager
-    {
-        return $this->lifecycleManager;
-    }
+    private ParametersResolver $parametersResolver;
 
     /**
      * 缓存已反射的类，以避免重复创建
@@ -61,6 +55,7 @@ class Container implements ContainerInterface
     public function __construct()
     {
         $this->lifecycleManager = new LifecycleManager();
+        $this->parametersResolver = new ParametersResolver();
     }
 
     /**
@@ -91,6 +86,12 @@ class Container implements ContainerInterface
     public static function setInstance($instance): void
     {
         static::$instance = $instance;
+    }
+
+
+    public function getLifecycleManager(): LifecycleManager
+    {
+        return $this->lifecycleManager;
     }
 
     /**
@@ -262,10 +263,10 @@ class Container implements ContainerInterface
     {
         $classReflector = $this->getReflectionClass($className);
 
-        if ($classReflector->hasMethod('__make')) {
-            $method = $classReflector->getMethod('__make');
+        if ($classReflector->hasMethod('initialize')) {
+            $method = $classReflector->getMethod('initialize');
             if ($method->isPublic() && $method->isStatic()) {
-                $args = $this->bindParams($method, $vars);
+                $args = $this->parametersResolver::getArguments($method, $vars);
                 return $method->invokeArgs(null, $args);
             }
         }
@@ -274,7 +275,7 @@ class Container implements ContainerInterface
 
         $instance = $constructor === null
             ? $classReflector->newInstanceWithoutConstructor()
-            : $classReflector->newInstanceArgs($this->bindParams($constructor, $vars));
+            : $classReflector->newInstanceArgs($this->parametersResolver::getArguments($constructor, $vars));
 
         // 自动注入
         foreach ($classReflector->getProperties() as $property) {
@@ -301,9 +302,41 @@ class Container implements ContainerInterface
             throw new FuncNotFoundException("function not exists: {$function}()", $e);
         }
 
-        $args = $this->bindParams($reflect, $vars);
+        $args = $this->parametersResolver::getArguments($reflect, $vars);
 
         return $function(...$args);
+    }
+
+    /**
+     * 调用反射执行类的方法 支持参数绑定
+     * @param $method
+     * @param array $vars
+     * @return mixed
+     * @throws ReflectionException
+     * @date 2024/12/24 11:47
+     * @author 原点 467490186@qq.com
+     */
+    public function invokeMethod($method, array $vars = []): mixed
+    {
+        if (is_array($method)) {
+            [$class, $method] = $method;
+
+            $class = is_object($class) ? $class : $this->invokeClass($class);
+        } else {
+            // 静态方法
+            [$class, $method] = explode('::', $method);
+        }
+
+        try {
+            $reflect = new ReflectionMethod($class, $method);
+        } catch (ReflectionException $e) {
+            $class = is_object($class) ? $class::class : $class;
+            throw new FuncNotFoundException('method not exists: ' . $class . '::' . $method . '()', $e);
+        }
+
+        $args = $this->parametersResolver::getArguments($reflect, $vars);
+
+        return $reflect->invokeArgs(is_object($class) ? $class : null, $args);
     }
 
     /**
@@ -324,86 +357,6 @@ class Container implements ContainerInterface
     }
 
     /**
-     * 绑定参数
-     * @access protected
-     * @param ReflectionFunctionAbstract $reflect 反射类
-     * @param array $vars 参数
-     * @return array
-     * @throws ReflectionException|InvalidArgumentException
-     */
-    protected function bindParams(ReflectionFunctionAbstract $reflect, array $vars = []): array
-    {
-        if ($reflect->getNumberOfParameters() == 0) {
-            return [];
-        }
-
-        // 判断数组类型 数字数组时按顺序绑定参数
-        $isList = array_is_list($vars);
-        $params = $reflect->getParameters();
-        $args = [];
-
-        foreach ($params as $param) {
-            $name = $param->getName();
-            $reflectionType = $param->getType();
-
-            // 可变参数处理
-            if ($param->isVariadic()) {
-                return array_merge($args, array_values($vars));
-            }
-
-            // 非标量类型参数（类/对象）
-            if ($reflectionType instanceof ReflectionNamedType && $reflectionType->isBuiltin() === false) {
-                $args[] = $this->getObjectParam($reflectionType->getName(), $vars, $param);
-                continue;
-            }
-
-            // 按位置绑定
-            if ($isList && !empty($vars)) {
-                $args[] = array_shift($vars);
-                continue;
-            }
-            // 按名称绑定
-            if (!$isList && array_key_exists($name, $vars)) {
-                $args[] = $vars[$name];
-                continue;
-            }
-            // 默认值处理
-            if ($param->isDefaultValueAvailable()) {
-                $args[] = $param->getDefaultValue();
-                continue;
-            }
-            throw new InvalidArgumentException('method param miss:' . $name);
-        }
-
-        return $args;
-    }
-
-    /**
-     * 获取对象类型的参数值
-     * @access protected
-     * @param string $className 类名
-     * @param array $vars 参数
-     * @param ReflectionParameter $param
-     * @return mixed
-     * @throws ClassNotFoundException|ReflectionException
-     */
-    protected function getObjectParam(string $className, array &$vars, ReflectionParameter $param): mixed
-    {
-        $array = $vars;
-        $value = array_shift($array);
-
-        if ($value instanceof $className) {
-            $result = $value;
-            array_shift($vars);
-        } else {
-            $result = $param->isDefaultValueAvailable() ? $param->getDefaultValue() : $this->get($className);
-        }
-
-        return $result;
-    }
-
-
-    /**
      * 获取实例
      *
      * @param string $id
@@ -414,7 +367,10 @@ class Container implements ContainerInterface
      */
     public function get(string $id): ?object
     {
-        return $this->make($id);
+        if ($this->has($id)) {
+            return $this->make($id);
+        }
+        throw new ClassNotFoundException('class not exists: ' . $id);
     }
 
     /**
@@ -436,9 +392,20 @@ class Container implements ContainerInterface
         if (!empty($attributes)) {
             return true;
         }
+
         $attributes = $classReflector->getAttributes(SingletonScoped::class);
         if (!empty($attributes)) {
             return false;
+        }
+
+        if ($classReflector->hasMethod('initialize')) {
+            $method = $classReflector->getMethod('initialize');
+            if (!empty($method->getAttributes(RequestScoped::class))) {
+                return true;
+            }
+            if (!empty($method->getAttributes(SingletonScoped::class))) {
+                return false;
+            }
         }
         // 隐式推断：未标记情况下，若为请求协程，默认为请求级别
         return $this->lifecycleManager->isRequestCoroutine();
@@ -449,6 +416,9 @@ class Container implements ContainerInterface
      */
     public function has(string $id): bool
     {
+        if (isset($this->bind[$id])) {
+            return true;
+        }
         $className = $this->getAlias($id);
         return $this->lifecycleManager->getGlobal($className) !== null
             || $this->lifecycleManager->getRequest($className) !== null;
