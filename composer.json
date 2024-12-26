@@ -20,8 +20,12 @@
   },
   "autoload": {
     "psr-4": {
-      "yuandian\\Container\\": "src",
-      "yuandian\\Container\\test\\": "test"
+      "yuandian\\Container\\": "src"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "yuandian\\Container\\Tests\\": "tests"
     }
   }
 }
