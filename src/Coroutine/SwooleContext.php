@@ -19,12 +19,6 @@ use Swoole\Coroutine;
 
 class SwooleContext implements ContextInterface
 {
-    public static SwooleContext $instance;
-
-    public function __construct()
-    {
-        self::$instance = new SwooleContext();
-    }
     public static function set(string $id, mixed $value, $coroutineId = null): mixed
     {
         SwooleContext::getContextFor($coroutineId)[$id] = $value;
