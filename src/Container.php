@@ -375,13 +375,15 @@ class Container implements ContainerInterface
 
         // 非请求协程，直接判断部署请求生命周期
         $isRequestScope = LifecycleManager::isRequestCoroutine();
+        // 闭包通过是否是请求协程隐式判断
+        if ($className instanceof Closure) {
+            return $isRequestScope;
+        }
+        // 非请求协程，直接判定为全局生命周期
         if ($isRequestScope === false) {
             return false;
         }
 
-        if ($className instanceof Closure) {
-            return LifecycleManager::isRequestCoroutine();
-        }
         $classReflector = $this->getReflectionClass($className);
 
         // 检查类注解和 initialize 方法生命周期注解
