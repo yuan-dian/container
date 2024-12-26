@@ -31,9 +31,6 @@ use yuandian\Container\Exception\FuncNotFoundException;
  */
 class Container implements ContainerInterface
 {
-    private LifecycleManager $lifecycleManager;
-    private ParametersResolver $parametersResolver;
-
     /**
      * 缓存已反射的类，以避免重复创建
      * @var array
@@ -51,12 +48,6 @@ class Container implements ContainerInterface
      * @var Container|Closure
      */
     protected static $instance;
-
-    public function __construct()
-    {
-        $this->lifecycleManager = new LifecycleManager();
-        $this->parametersResolver = new ParametersResolver();
-    }
 
     /**
      * 获取当前容器的实例（单例）
@@ -88,12 +79,6 @@ class Container implements ContainerInterface
         static::$instance = $instance;
     }
 
-
-    public function getLifecycleManager(): LifecycleManager
-    {
-        return $this->lifecycleManager;
-    }
-
     /**
      * 根据别名获取真实类名
      * @param string $abstract
@@ -118,9 +103,7 @@ class Container implements ContainerInterface
     public function instanceGlobal(string $abstract, object $instance): static
     {
         $abstract = $this->getAlias($abstract);
-
-        $this->lifecycleManager->setGlobal($abstract, $instance);
-
+        LifecycleManager::setGlobal($abstract, $instance);
         return $this;
     }
 
@@ -136,7 +119,7 @@ class Container implements ContainerInterface
     {
         $abstract = $this->getAlias($abstract);
 
-        $this->lifecycleManager->setRequest($abstract, $instance);
+        LifecycleManager::setRequest($abstract, $instance);
 
         return $this;
     }
@@ -168,12 +151,12 @@ class Container implements ContainerInterface
         if (is_object($concrete)) {
             $className = get_class($concrete);
             // 判断生命周期类型（缓存判断结果）
-            $isRequestScope = $this->lifecycleManager->getCachedLifecycle($className);
+            $isRequestScope = LifecycleManager::getCachedLifecycle($className);
             if ($isRequestScope === null) {
                 $isRequestScope = $this->isRequestScope($className);
-                $this->lifecycleManager->cacheLifecycle($className, $isRequestScope);
+                LifecycleManager::cacheLifecycle($className, $isRequestScope);
             }
-            if ($isRequestScope && $this->lifecycleManager->isRequestCoroutine()) {
+            if ($isRequestScope && LifecycleManager::isRequestCoroutine()) {
                 $this->instanceRequest($abstract, $concrete);
             } else {
                 $this->instanceGlobal($abstract, $concrete);
@@ -222,30 +205,30 @@ class Container implements ContainerInterface
         $className = $this->getAlias($className);
 
         // 1. 检查全局容器是否存在实例
-        $globalInstance = $this->lifecycleManager->getGlobal($className);
+        $globalInstance = LifecycleManager::getGlobal($className);
         if ($globalInstance !== null) {
             return $globalInstance;
         }
 
         // 2. 判断生命周期类型（缓存判断结果）
-        $isRequestScope = $this->lifecycleManager->getCachedLifecycle($className);
+        $isRequestScope = LifecycleManager::getCachedLifecycle($className);
         if ($isRequestScope === null) {
             $isRequestScope = $this->isRequestScope($className);
-            $this->lifecycleManager->cacheLifecycle($className, $isRequestScope);
+            LifecycleManager::cacheLifecycle($className, $isRequestScope);
         }
         // 3. 如果是请求级别并处于请求协程中，使用请求容器
-        if ($isRequestScope && $this->lifecycleManager->isRequestCoroutine()) {
-            $requestInstance = $this->lifecycleManager->getRequest($className);
+        if ($isRequestScope && LifecycleManager::isRequestCoroutine()) {
+            $requestInstance = LifecycleManager::getRequest($className);
             if ($requestInstance === null) {
                 $requestInstance = $this->invoke($className, $vars); // 自动创建
-                $this->lifecycleManager->setRequest($className, $requestInstance);
+                LifecycleManager::setRequest($className, $requestInstance);
             }
             return $requestInstance;
         }
 
         // 4. 否则，创建并存储在全局容器
         $instance = $this->invoke($className, $vars);
-        $this->lifecycleManager->setGlobal($className, $instance);
+        LifecycleManager::setGlobal($className, $instance);
         // 删除全局对象反射缓存，后续不需要重新创建对象
         unset($this->reflectionCache[$className]);
         return $instance;
@@ -266,7 +249,7 @@ class Container implements ContainerInterface
         if ($classReflector->hasMethod('initialize')) {
             $method = $classReflector->getMethod('initialize');
             if ($method->isPublic() && $method->isStatic()) {
-                $args = $this->parametersResolver::getArguments($method, $vars);
+                $args = ParametersResolver::getArguments($method, $vars);
                 return $method->invokeArgs(null, $args);
             }
         }
@@ -275,7 +258,7 @@ class Container implements ContainerInterface
 
         $instance = $constructor === null
             ? $classReflector->newInstanceWithoutConstructor()
-            : $classReflector->newInstanceArgs($this->parametersResolver::getArguments($constructor, $vars));
+            : $classReflector->newInstanceArgs(ParametersResolver::getArguments($constructor, $vars));
 
         // 自动注入
         foreach ($classReflector->getProperties() as $property) {
@@ -302,7 +285,7 @@ class Container implements ContainerInterface
             throw new FuncNotFoundException("function not exists: {$function}()", $e);
         }
 
-        $args = $this->parametersResolver::getArguments($reflect, $vars);
+        $args = ParametersResolver::getArguments($reflect, $vars);
 
         return $function(...$args);
     }
@@ -334,7 +317,7 @@ class Container implements ContainerInterface
             throw new FuncNotFoundException('method not exists: ' . $class . '::' . $method . '()', $e);
         }
 
-        $args = $this->parametersResolver::getArguments($reflect, $vars);
+        $args = ParametersResolver::getArguments($reflect, $vars);
 
         return $reflect->invokeArgs(is_object($class) ? $class : null, $args);
     }
@@ -384,7 +367,7 @@ class Container implements ContainerInterface
     private function isRequestScope(string|Closure $className): bool
     {
         if ($className instanceof Closure) {
-            return $this->lifecycleManager->isRequestCoroutine();
+            return LifecycleManager::isRequestCoroutine();
         }
         $classReflector = $this->getReflectionClass($className);
 
@@ -408,7 +391,7 @@ class Container implements ContainerInterface
             }
         }
         // 隐式推断：未标记情况下，若为请求协程，默认为请求级别
-        return $this->lifecycleManager->isRequestCoroutine();
+        return LifecycleManager::isRequestCoroutine();
     }
 
     /**
@@ -420,7 +403,32 @@ class Container implements ContainerInterface
             return true;
         }
         $className = $this->getAlias($id);
-        return $this->lifecycleManager->getGlobal($className) !== null
-            || $this->lifecycleManager->getRequest($className) !== null;
+        return LifecycleManager::getGlobal($className) !== null
+            || LifecycleManager::getRequest($className) !== null;
+    }
+
+    /**
+     * 魔术方法
+     * @param $name
+     * @param $value
+     * @date 2024/12/26 14:40
+     * @author 原点 467490186@qq.com
+     */
+    public function __set($name, $value)
+    {
+        $this->bind($name, $value);
+    }
+
+    /**
+     * 魔术方法
+     * @param $name
+     * @return mixed|object|string|null
+     * @throws ReflectionException
+     * @date 2024/12/26 14:39
+     * @author 原点 467490186@qq.com
+     */
+    public function __get($name)
+    {
+        return $this->get($name);
     }
 }

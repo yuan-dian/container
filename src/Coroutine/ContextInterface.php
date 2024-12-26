@@ -92,5 +92,5 @@ interface ContextInterface
      * @date 2024/12/24 09:28
      * @author 原点 467490186@qq.com
      */
-    public static function run(callable $callable, mixed ...$data): mixed;
+    public static function run(callable $callable, mixed ...$data);
 }

@@ -111,7 +111,7 @@ class SwowContext implements ContextInterface
         return $value instanceof Closure ? $value() : $value;
     }
 
-    public static function run(callable $callable, mixed ...$data): Coroutine
+    public static function run(callable $callable, mixed ...$data)
     {
         $pid = SwowContext::getCurrent();
         return Coroutine::run(function () use ($callable, $pid, $data) {

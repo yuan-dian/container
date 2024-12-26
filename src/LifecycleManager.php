@@ -13,7 +13,6 @@ declare (strict_types=1);
 
 namespace yuandian\Container;
 
-use yuandian\Container\Coroutine\ContextInterface;
 use yuandian\Container\Coroutine\ContextManager;
 
 /**
@@ -21,82 +20,75 @@ use yuandian\Container\Coroutine\ContextManager;
  */
 class LifecycleManager
 {
-    private array $globalInstances = [];
-    private array $cache = []; // 缓存生命周期判断结果
-
-    private ContextInterface $context;
-
-    public function __construct()
-    {
-        $this->context = (new ContextManager())->getContext();
-    }
+    private static array $globalInstances = [];
+    private static array $cache = []; // 缓存生命周期判断结果
 
     /**
      * 获取全局实例
      */
-    public function getGlobal(string $id)
+    public static function getGlobal(string $id)
     {
-        return $this->globalInstances[$id] ?? null;
+        return self::$globalInstances[$id] ?? null;
     }
 
     /**
      * 设置全局实例
      */
-    public function setGlobal(string $id, $instance): void
+    public static function setGlobal(string $id, $instance): void
     {
-        $this->globalInstances[$id] = $instance;
+        self::$globalInstances[$id] = $instance;
     }
 
     /**
      * 获取请求级别实例
      */
-    public function getRequest(string $id)
+    public static function getRequest(string $id)
     {
-        $context = $this->context::getContext();
+        $context = ContextManager::getInstance()->getContext();
         return $context[$id] ?? null;
     }
 
     /**
      * 设置请求级别实例
      */
-    public function setRequest(string $id, $instance): void
+    public static function setRequest(string $id, $instance): void
     {
-        $context = $this->context::getContext();
+        $context = ContextManager::getInstance()->getContext();
         $context[$id] = $instance;
     }
 
     /**
      * 判断当前是否是请求协程或其子协程
      */
-    public function isRequestCoroutine(): bool
+    public static function isRequestCoroutine(): bool
     {
-        $context = $this->context::getContext();
+        $context = ContextManager::getInstance()->getContext();
         return $context['is_request_coroutine'] ?? false;
     }
 
     /**
      * 显式标记请求协程（包括子协程）
      */
-    public function markRequestCoroutine(): void
+    public static function markRequestCoroutine(): void
     {
-        $context = $this->context::getContext();
+        $context = ContextManager::getInstance()->getContext();
         $context['is_request_coroutine'] = true;
     }
 
     /**
      * 缓存生命周期判断结果
      */
-    public function cacheLifecycle(string $id, bool $isRequestScope): void
+    public static function cacheLifecycle(string $id, bool $isRequestScope): void
     {
-        $this->cache[$id] = $isRequestScope;
+        self::$cache[$id] = $isRequestScope;
     }
 
     /**
      * 获取缓存的生命周期判断结果
      */
-    public function getCachedLifecycle(string $id): ?bool
+    public static function getCachedLifecycle(string $id): ?bool
     {
-        return $this->cache[$id] ?? null;
+        return self::$cache[$id] ?? null;
     }
 
     /**
@@ -107,8 +99,8 @@ class LifecycleManager
      * @date 2024/12/24 09:28
      * @author 原点 467490186@qq.com
      */
-    public function run(callable $callable, mixed ...$data)
+    public static function run(callable $callable, mixed ...$data): mixed
     {
-        return $this->context::run($callable, $data);
+        return ContextManager::getInstance()::run($callable, $data);
     }
 }

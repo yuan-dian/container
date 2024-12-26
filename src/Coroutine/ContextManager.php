@@ -17,31 +17,19 @@ use RuntimeException;
 
 class ContextManager
 {
-    private string $runtime;
-
-    public function __construct()
-    {
-        if (extension_loaded('swow')) {
-            $this->runtime = 'swow';
-        } elseif (extension_loaded('swoole')) {
-            $this->runtime = 'swoole';
-        } else {
-            throw new RuntimeException('No supported coroutine runtime detected (Swow or Swoole).');
-        }
-    }
 
     /**
      * 获取当前协程上下文
      * @return ContextInterface
      */
-    public function getContext(): ContextInterface
+    public static function getInstance(): ContextInterface
     {
-        if ($this->runtime === 'swow') {
+        if (extension_loaded('swow')) {
             return new SwowContext();
-        } elseif ($this->runtime === 'swoole') {
+        }
+        if (extension_loaded('swoole')) {
             return new SwooleContext();
         }
-
-        throw new RuntimeException('Unsupported coroutine runtime.');
+        throw new RuntimeException('No supported coroutine runtime detected (Swow or Swoole).');
     }
 }
