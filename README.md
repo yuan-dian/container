@@ -5,6 +5,11 @@
 
 ``` composer require yuandian/container ```
 
+# 使用协程 2选1 【需要加载对应的C扩展】
+
+- 使用swow: ``` composer require swow/swow ```
+- 使用swoole：``` composer require swoole/ide-helper ```
+
 # 特性
 - 支持长生命周期与短生命周期的管理（短生命周期使用swow|swoole协程实现）
 - 支持PSR-11规范
