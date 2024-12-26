@@ -150,13 +150,9 @@ class Container implements ContainerInterface
         // 判断是否是绑定对象
         if (is_object($concrete)) {
             $className = get_class($concrete);
-            // 判断生命周期类型（缓存判断结果）
-            $isRequestScope = LifecycleManager::getCachedLifecycle($className);
-            if ($isRequestScope === null) {
-                $isRequestScope = $this->isRequestScope($className);
-                LifecycleManager::cacheLifecycle($className, $isRequestScope);
-            }
-            if ($isRequestScope && LifecycleManager::isRequestCoroutine()) {
+            // 判断生命周期类型
+            $isRequestScope = $this->isRequestScope($className);
+            if ($isRequestScope) {
                 $this->instanceRequest($abstract, $concrete);
             } else {
                 $this->instanceGlobal($abstract, $concrete);
@@ -197,36 +193,41 @@ class Container implements ContainerInterface
      * @template T
      * @param string|class-string<T> $className 类名或者标识
      * @param array $vars 变量
-     * @return T|object
-     * @throws ClassNotFoundException|ReflectionException|InvalidArgumentException
+     * @param bool $newInstance
+     * @return object
+     * @throws ReflectionException
      */
-    public function make(string $className, array $vars = []): ?object
+    public function make(string $className, array $vars = [], bool $newInstance = false): object
     {
         $className = $this->getAlias($className);
 
-        // 1. 检查全局容器是否存在实例
-        $globalInstance = LifecycleManager::getGlobal($className);
-        if ($globalInstance !== null) {
-            return $globalInstance;
+        // 如果指定创建新实例，直接调用
+        if ($newInstance) {
+            return $this->invoke($className, $vars);
         }
 
-        // 2. 判断生命周期类型（缓存判断结果）
-        $isRequestScope = LifecycleManager::getCachedLifecycle($className);
-        if ($isRequestScope === null) {
-            $isRequestScope = $this->isRequestScope($className);
-            LifecycleManager::cacheLifecycle($className, $isRequestScope);
+        // 检查全局容器是否存在实例
+        if ($instance = LifecycleManager::getGlobal($className)) {
+            return $instance;
         }
-        // 3. 如果是请求级别并处于请求协程中，使用请求容器
-        if ($isRequestScope && LifecycleManager::isRequestCoroutine()) {
-            $requestInstance = LifecycleManager::getRequest($className);
-            if ($requestInstance === null) {
-                $requestInstance = $this->invoke($className, $vars); // 自动创建
-                LifecycleManager::setRequest($className, $requestInstance);
-            }
-            return $requestInstance;
+        // 检查请求生命周期容器是否存在实例
+        if ($instance = LifecycleManager::getRequest($className)) {
+            return $instance;
         }
 
-        // 4. 否则，创建并存储在全局容器
+        // 判断生命周期类型
+        $isRequestScope = $this->isRequestScope($className);
+
+        // 实例化实例
+        $instance = $this->invoke($className, $vars);
+
+        if ($isRequestScope) {
+            // 存储在请求生命周期容器
+            LifecycleManager::setRequest($className, $instance);
+            return $instance;
+        }
+
+        // 存储在全局生命周期容器
         $instance = $this->invoke($className, $vars);
         LifecycleManager::setGlobal($className, $instance);
         // 删除全局对象反射缓存，后续不需要重新创建对象
@@ -366,32 +367,73 @@ class Container implements ContainerInterface
      */
     private function isRequestScope(string|Closure $className): bool
     {
+        $isRequestScope = LifecycleManager::getCachedLifecycle($className);
+
+        if ($isRequestScope !== null) {
+            return $isRequestScope;
+        }
+
+        // 非请求协程，直接判断部署请求生命周期
+        $isRequestScope = LifecycleManager::isRequestCoroutine();
+        if ($isRequestScope === false) {
+            return false;
+        }
+
         if ($className instanceof Closure) {
             return LifecycleManager::isRequestCoroutine();
         }
         $classReflector = $this->getReflectionClass($className);
 
-        $attributes = $classReflector->getAttributes(RequestScoped::class);
-        if (!empty($attributes)) {
-            return true;
+        // 检查类注解和 initialize 方法生命周期注解
+        $scopedAttribute = $this->getScopedAttribute($classReflector);
+        if ($scopedAttribute !== null) {
+            $isRequestScope = ($scopedAttribute === RequestScoped::class);
+            return LifecycleManager::cacheLifecycle($className, $isRequestScope);
         }
 
-        $attributes = $classReflector->getAttributes(SingletonScoped::class);
-        if (!empty($attributes)) {
-            return false;
+        // 隐式推断：未标记情况下，若为请求协程，默认为请求级别
+        return LifecycleManager::cacheLifecycle($className, true);
+    }
+
+    /**
+     * 检查反射类或方法是否具有指定的生命周期注解
+     *
+     * @param ReflectionClass|ReflectionMethod $reflector
+     * @param string $attributeClass
+     * @return bool
+     */
+    private function hasScopedAttribute(ReflectionClass|ReflectionMethod $reflector, string $attributeClass): bool
+    {
+        return !empty($reflector->getAttributes($attributeClass));
+    }
+
+    /**
+     * 获取类或其 `initialize` 方法的生命周期注解
+     *
+     * @param ReflectionClass $classReflector
+     * @return string|null 返回匹配的注解类名或 null
+     */
+    private function getScopedAttribute(ReflectionClass $classReflector): ?string
+    {
+        $scoped = [RequestScoped::class, SingletonScoped::class];
+        // 检查类级别注解
+        foreach ($scoped as $scopedClass) {
+            if ($this->hasScopedAttribute($classReflector, $scopedClass)) {
+                return $scopedClass;
+            }
         }
 
+        // 检查 initialize 方法注解
         if ($classReflector->hasMethod('initialize')) {
             $method = $classReflector->getMethod('initialize');
-            if (!empty($method->getAttributes(RequestScoped::class))) {
-                return true;
-            }
-            if (!empty($method->getAttributes(SingletonScoped::class))) {
-                return false;
+            foreach ($scoped as $scopedClass) {
+                if ($this->hasScopedAttribute($method, $scopedClass)) {
+                    return $scopedClass;
+                }
             }
         }
-        // 隐式推断：未标记情况下，若为请求协程，默认为请求级别
-        return LifecycleManager::isRequestCoroutine();
+
+        return null;
     }
 
     /**

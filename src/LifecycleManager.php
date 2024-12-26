@@ -78,9 +78,10 @@ class LifecycleManager
     /**
      * 缓存生命周期判断结果
      */
-    public static function cacheLifecycle(string $id, bool $isRequestScope): void
+    public static function cacheLifecycle(string $id, bool $isRequestScope): bool
     {
         self::$cache[$id] = $isRequestScope;
+        return $isRequestScope;
     }
 
     /**
