@@ -51,7 +51,11 @@ class ParametersResolver
 
             // 非标量类型参数（类/对象）
             if ($reflectionType instanceof ReflectionNamedType && $reflectionType->isBuiltin() === false) {
-                $args[] = self::getClassInstance($reflectionType->getName(), $vars, $param);
+                $className = $reflectionType->getName();
+                if ($className == 'self') {
+                    $className = $param->getDeclaringClass()->getName();
+                }
+                $args[] = self::getClassInstance($className, $vars, $param);
                 continue;
             }
 
