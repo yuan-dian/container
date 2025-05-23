@@ -98,7 +98,12 @@ class ParametersResolver
             $result = $value;
             array_shift($vars);
         } else {
-            $result = $param->isDefaultValueAvailable() ? $param->getDefaultValue() : Container::getInstance()->get($className);
+            $instance = Container::getInstance();
+            if ($param->isDefaultValueAvailable()) {
+                $result = $instance->bound($className) ? $instance->make($className) : $param->getDefaultValue();
+            } else {
+                $result = $instance->make($className);
+            }
         }
 
         return $result;

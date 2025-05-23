@@ -11,7 +11,8 @@
 - 使用swoole：``` composer require swoole/ide-helper ```
 
 # 特性
-- 支持长生命周期与短生命周期的管理（短生命周期使用swow|swoole协程实现）
+- 基于[think-container](https://github.com/top-think/think-container)改造
+- 支持长生命周期与协程请求生命周期的管理（协程请求生命周期使用swow|swoole协程实现）
 - 支持PSR-11规范
 - 支持依赖注入
 - 支持通过```#[Inject]```注解实现属性注入

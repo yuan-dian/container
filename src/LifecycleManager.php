@@ -13,6 +13,7 @@ declare (strict_types=1);
 
 namespace yuandian\Container;
 
+use Throwable;
 use yuandian\Container\Coroutine\ContextManager;
 
 /**
@@ -62,8 +63,12 @@ class LifecycleManager
      */
     public static function isRequestCoroutine(): bool
     {
-        $context = ContextManager::getInstance()->getContext();
-        return $context['is_request_coroutine'] ?? false;
+        try {
+            $context = ContextManager::getInstance()->getContext();
+            return $context['is_request_coroutine'] ?? false;
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**
