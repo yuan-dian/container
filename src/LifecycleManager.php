@@ -45,7 +45,7 @@ class LifecycleManager
      */
     public static function getRequest(string $id)
     {
-        $context = ContextManager::getInstance()->getContext();
+        $context = static::getContext();
         return $context[$id] ?? null;
     }
 
@@ -54,7 +54,7 @@ class LifecycleManager
      */
     public static function setRequest(string $id, $instance): void
     {
-        $context = ContextManager::getInstance()->getContext();
+        $context = static::getContext();
         $context[$id] = $instance;
     }
 
@@ -63,12 +63,8 @@ class LifecycleManager
      */
     public static function isRequestCoroutine(): bool
     {
-        try {
-            $context = ContextManager::getInstance()->getContext();
-            return $context['is_request_coroutine'] ?? false;
-        } catch (Throwable) {
-            return false;
-        }
+        $context = static::getContext();
+        return $context['is_request_coroutine'] ?? false;
     }
 
     /**
@@ -76,7 +72,7 @@ class LifecycleManager
      */
     public static function markRequestCoroutine(): void
     {
-        $context = ContextManager::getInstance()->getContext();
+        $context = static::getContext();
         $context['is_request_coroutine'] = true;
     }
 
@@ -108,5 +104,22 @@ class LifecycleManager
     public static function run(callable $callable, mixed ...$data): mixed
     {
         return ContextManager::getInstance()::run($callable, $data);
+    }
+
+    /**
+     * 获取上下文
+     * @return array|mixed
+     * @date 2025/5/23 下午6:02
+     * @author 原点 467490186@qq.com
+     */
+    private static function getContext(): mixed
+    {
+        try {
+            return ContextManager::getInstance()->getContext();
+        }catch (Throwable $throwable){
+            return [];
+        }
+
+
     }
 }
