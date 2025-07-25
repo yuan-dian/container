@@ -194,7 +194,7 @@ class Container implements ContainerInterface
      * @param string|class-string<T> $className 类名或者标识
      * @param array $vars 变量
      * @param bool $newInstance
-     * @return object
+     * @return T
      * @throws ReflectionException
      */
     public function make(string $className, array $vars = [], bool $newInstance = false): object
@@ -342,14 +342,14 @@ class Container implements ContainerInterface
 
     /**
      * 获取实例
-     *
-     * @param string $id
-     * @return object|null
-     * @throws ClassNotFoundException|ReflectionException|InvalidArgumentException
+     * @template T
+     * @param string|class-string<T> $id
+     * @return T
+     * @throws ReflectionException
      * @date 2024/12/18 14:08
      * @author 原点 467490186@qq.com
      */
-    public function get(string $id): ?object
+    public function get(string $id): mixed
     {
         if ($this->has($id)) {
             return $this->make($id);
