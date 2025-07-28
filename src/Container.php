@@ -14,28 +14,21 @@ declare (strict_types=1);
 namespace yuandian\Container;
 
 use Closure;
-use InvalidArgumentException;
 use Psr\Container\ContainerInterface;
-use ReflectionClass;
 use ReflectionException;
 use ReflectionFunction;
-use ReflectionMethod;
 use yuandian\Container\Attributes\Inject;
 use yuandian\Container\Attributes\RequestScoped;
 use yuandian\Container\Attributes\SingletonScoped;
 use yuandian\Container\Exception\ClassNotFoundException;
 use yuandian\Container\Exception\FuncNotFoundException;
+use yuandian\Tools\reflection\ClassReflector;
 
 /**
  * 容器对象
  */
 class Container implements ContainerInterface
 {
-    /**
-     * 缓存已反射的类，以避免重复创建
-     * @var array
-     */
-    private array $reflectionCache = [];
 
     /**
      * 容器绑定标识
@@ -47,7 +40,7 @@ class Container implements ContainerInterface
      * 容器对象实例
      * @var Container|Closure
      */
-    protected static $instance;
+    protected static Closure|Container $instance;
 
     /**
      * 获取当前容器的实例（单例）
@@ -71,10 +64,10 @@ class Container implements ContainerInterface
     /**
      * 设置当前容器的实例
      * @access public
-     * @param object $instance
+     * @param object|callable $instance
      * @return void
      */
-    public static function setInstance($instance): void
+    public static function setInstance(object|callable $instance): void
     {
         static::$instance = $instance;
     }
@@ -131,6 +124,7 @@ class Container implements ContainerInterface
      * @param string|array $abstract 类标识、接口
      * @param mixed $concrete 要绑定的类、闭包或者实例
      * @return $this
+     * @throws ReflectionException
      */
     public function bind(string|array $abstract, mixed $concrete = null): static
     {
@@ -165,27 +159,6 @@ class Container implements ContainerInterface
             $this->bind[$abstract] = $concrete;
         }
         return $this;
-    }
-
-
-    /**
-     * 获取对象的反射信息
-     *
-     * @param string $className
-     * @return ReflectionClass
-     * @date 2024/12/20 09:48
-     * @author 原点 467490186@qq.com
-     */
-    private function getReflectionClass(string $className): ReflectionClass
-    {
-        if (!isset($this->reflectionCache[$className])) {
-            try {
-                $this->reflectionCache[$className] = new ReflectionClass($className);
-            } catch (ReflectionException $e) {
-                throw new ClassNotFoundException('class not exists: ' . $className, $e);
-            }
-        }
-        return $this->reflectionCache[$className];
     }
 
     /**
@@ -224,28 +197,25 @@ class Container implements ContainerInterface
         if ($isRequestScope) {
             // 存储在请求生命周期容器
             LifecycleManager::setRequest($className, $instance);
-            return $instance;
+        } else {
+            // 存储在全局生命周期容器
+            LifecycleManager::setGlobal($className, $instance);
         }
-
-        // 存储在全局生命周期容器
-        $instance = $this->invoke($className, $vars);
-        LifecycleManager::setGlobal($className, $instance);
-        // 删除全局对象反射缓存，后续不需要重新创建对象
-        unset($this->reflectionCache[$className]);
         return $instance;
     }
 
     /**
      * 调用反射执行类的实例化 支持依赖注入
      * @access public
-     * @param string $className 类名
+     * @template T
+     * @param string|class-string<T> $className 类名
      * @param array $vars 参数
-     * @return object|null
+     * @return T|null
      * @throws ClassNotFoundException|ReflectionException
      */
     public function invokeClass(string $className, array $vars = []): ?object
     {
-        $classReflector = $this->getReflectionClass($className);
+        $classReflector = new ClassReflector($className);
 
         if ($classReflector->hasMethod('initialize')) {
             $method = $classReflector->getMethod('initialize');
@@ -263,8 +233,8 @@ class Container implements ContainerInterface
 
         // 自动注入
         foreach ($classReflector->getProperties() as $property) {
-            if (!$property->isInitialized($instance) && $property->getAttributes(Inject::class) !== []) {
-                $property->setValue($instance, $this->get($property->getType()->getName()));
+            if (!$property->isInitialized($instance) && $property->hasAttribute(Inject::class)) {
+                $property->setValue($instance, $this->make($property->getType()->getName()));
             }
         }
         return $instance;
@@ -310,17 +280,17 @@ class Container implements ContainerInterface
             // 静态方法
             [$class, $method] = explode('::', $method);
         }
-
-        try {
-            $reflect = new ReflectionMethod($class, $method);
-        } catch (ReflectionException $e) {
+        $classReflector = new ClassReflector($class);
+        if (!$classReflector->hasMethod($method)) {
             $class = is_object($class) ? $class::class : $class;
-            throw new FuncNotFoundException('method not exists: ' . $class . '::' . $method . '()', $e);
+            throw new FuncNotFoundException('method not exists: ' . $class . '::' . $method . '()');
         }
 
-        $args = ParametersResolver::getArguments($reflect, $vars);
+        $methodReflector =  $classReflector->getMethod($method);
 
-        return $reflect->invokeArgs(is_object($class) ? $class : null, $args);
+        $args = ParametersResolver::getArguments($methodReflector, $vars);
+
+        return $methodReflector->invokeArgs(is_object($class) ? $class : null, $args);
     }
 
     /**
@@ -361,7 +331,7 @@ class Container implements ContainerInterface
      * 判断类是否为短生命周期
      * @param string|Closure $className
      * @return bool
-     * @throws ClassNotFoundException
+     * @throws ClassNotFoundException|ReflectionException
      * @date 2024/12/18 14:07
      * @author 原点 467490186@qq.com
      */
@@ -372,70 +342,52 @@ class Container implements ContainerInterface
         if ($isRequestScope !== null) {
             return $isRequestScope;
         }
-
+        // 闭包默认是请求级别
+        if ($className instanceof Closure) {
+            return true;
+        }
         // 非请求协程，直接判断部署请求生命周期
         $isRequestScope = LifecycleManager::isRequestCoroutine();
-        // 闭包通过是否是请求协程隐式判断
-        if ($className instanceof Closure) {
-            return $isRequestScope;
-        }
         // 非请求协程，直接判定为全局生命周期
         if ($isRequestScope === false) {
             return false;
         }
 
-        $classReflector = $this->getReflectionClass($className);
+        $classReflector = new ClassReflector($className);
 
         // 检查类注解和 initialize 方法生命周期注解
-        $scopedAttribute = $this->getScopedAttribute($classReflector);
-        if ($scopedAttribute !== null) {
-            $isRequestScope = ($scopedAttribute === RequestScoped::class);
-            return LifecycleManager::cacheLifecycle($className, $isRequestScope);
-        }
+        $isRequestScope = $this->getScopedAttribute($classReflector);
 
         // 隐式推断：未标记情况下，若为请求协程，默认为请求级别
-        return LifecycleManager::cacheLifecycle($className, true);
-    }
-
-    /**
-     * 检查反射类或方法是否具有指定的生命周期注解
-     *
-     * @param ReflectionClass|ReflectionMethod $reflector
-     * @param string $attributeClass
-     * @return bool
-     */
-    private function hasScopedAttribute(ReflectionClass|ReflectionMethod $reflector, string $attributeClass): bool
-    {
-        return !empty($reflector->getAttributes($attributeClass));
+        return LifecycleManager::cacheLifecycle($className, $isRequestScope);
     }
 
     /**
      * 获取类或其 `initialize` 方法的生命周期注解
-     *
-     * @param ReflectionClass $classReflector
-     * @return string|null 返回匹配的注解类名或 null
+     * @param ClassReflector $classReflector
+     * @return bool
+     * @date 2025/7/28 上午11:47
+     * @author 原点 467490186@qq.com
      */
-    private function getScopedAttribute(ReflectionClass $classReflector): ?string
+    private function getScopedAttribute(ClassReflector $classReflector): bool
     {
-        $scoped = [RequestScoped::class, SingletonScoped::class];
-        // 检查类级别注解
-        foreach ($scoped as $scopedClass) {
-            if ($this->hasScopedAttribute($classReflector, $scopedClass)) {
-                return $scopedClass;
-            }
+        if ($classReflector->hasAttribute(RequestScoped::class)) {
+            return true;
         }
-
+        if ($classReflector->hasAttribute(SingletonScoped::class)) {
+            return false;
+        }
         // 检查 initialize 方法注解
         if ($classReflector->hasMethod('initialize')) {
-            $method = $classReflector->getMethod('initialize');
-            foreach ($scoped as $scopedClass) {
-                if ($this->hasScopedAttribute($method, $scopedClass)) {
-                    return $scopedClass;
-                }
+            $initialize = $classReflector->getMethod('initialize');
+            if ($initialize->hasAttribute(RequestScoped::class)) {
+                return true;
+            }
+            if ($initialize->hasAttribute(SingletonScoped::class)) {
+                return false;
             }
         }
-
-        return null;
+        return false;
     }
 
     /**
@@ -456,6 +408,7 @@ class Container implements ContainerInterface
      * @param $name
      * @param $value
      * @date 2024/12/26 14:40
+     * @throws ReflectionException
      * @author 原点 467490186@qq.com
      */
     public function __set($name, $value)

@@ -16,21 +16,21 @@ namespace yuandian\Container;
 use InvalidArgumentException;
 use ReflectionFunctionAbstract;
 use ReflectionNamedType;
-use ReflectionParameter;
+use yuandian\Tools\reflection\MethodReflector;
+use yuandian\Tools\reflection\ParameterReflector;
 
 class ParametersResolver
 {
     /**
      * 获取并解析所有参数值。
      *
-     * @param ReflectionFunctionAbstract $functionAbstract
+     * @param MethodReflector|ReflectionFunctionAbstract $functionAbstract
      * @param array $vars
      * @return array 包含解析后的参数值的数组。
      * @throws \ReflectionException
      */
-    public static function getArguments(ReflectionFunctionAbstract $functionAbstract, array $vars = []): array
+    public static function getArguments(MethodReflector|ReflectionFunctionAbstract $functionAbstract, array $vars = []): array
     {
-
         if ($functionAbstract->getNumberOfParameters() == 0) {
             return [];
         }
@@ -83,13 +83,13 @@ class ParametersResolver
     /**
      * @param string $className
      * @param array $vars
-     * @param ReflectionParameter $param
+     * @param ParameterReflector $param
      * @return mixed
      * @throws \ReflectionException
      * @date 2024/12/24 13:51
      * @author 原点 467490186@qq.com
      */
-    protected static function getClassInstance(string $className, array &$vars, ReflectionParameter $param): mixed
+    protected static function getClassInstance(string $className, array &$vars, ParameterReflector $param): mixed
     {
         $array = $vars;
         $value = array_shift($array);
