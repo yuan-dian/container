@@ -38,9 +38,9 @@ class Container implements ContainerInterface
 
     /**
      * 容器对象实例
-     * @var Container|Closure
+     * @var Closure|Container|null
      */
-    protected static Closure|Container $instance;
+    protected static Closure|Container|null $instance = null;
 
     /**
      * 获取当前容器的实例（单例）
